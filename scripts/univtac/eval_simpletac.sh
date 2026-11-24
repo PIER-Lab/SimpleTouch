@@ -92,7 +92,7 @@ UNIVTAC_UPSTREAM_ROOT=${UNIVTAC_UPSTREAM_ROOT:-$UNIVTAC_DIR}
 UNIVTAC_PYTHON=${UNIVTAC_PYTHON:-python}
 UNIVTAC_ENVIRONMENT=${UNIVTAC_ENVIRONMENT:-reference}
 case "$UNIVTAC_ENVIRONMENT" in
-  reference)
+  reference|tacittouch)
     export UNIVTAC_LIVESTREAM=${UNIVTAC_LIVESTREAM:-2}
     if [[ "$UNIVTAC_LIVESTREAM" != "2" ]]; then
       echo "The reference evaluation requires UNIVTAC_LIVESTREAM=2." >&2
@@ -100,9 +100,10 @@ case "$UNIVTAC_ENVIRONMENT" in
     fi
     if [[ "${UNIVTAC_REFERENCE_READY:-false}" != "true" ]]; then
       RUNTIME_ROOT=${SIMPLETOUCH_RUNTIME_ROOT:-$REPO_DIR/.runtime}
-      REFERENCE_TARGET=${SIMPLETOUCH_REFERENCE_RUNTIME:-$RUNTIME_ROOT/univtac_reference/gpu$GPU_ID/UniVTAC}
+      REFERENCE_TARGET=${SIMPLETOUCH_REFERENCE_RUNTIME:-$RUNTIME_ROOT/univtac_$UNIVTAC_ENVIRONMENT/gpu$GPU_ID/UniVTAC}
       UNIVTAC_DIR=$(python3 "$SCRIPT_DIR/reference_runtime.py" \
         --upstream "$UNIVTAC_UPSTREAM_ROOT" --target "$REFERENCE_TARGET" \
+        --profile "$UNIVTAC_ENVIRONMENT" \
         --kit-root "$(dirname "$REFERENCE_TARGET")/kit")
       export UNIVTAC_DIR
     elif [[ ! -f "$UNIVTAC_DIR/reference-runtime.json" ]]; then
@@ -115,7 +116,7 @@ case "$UNIVTAC_ENVIRONMENT" in
     DEFAULT_EVAL_DRIVER=simpletouch
     ;;
   *)
-    echo "UNIVTAC_ENVIRONMENT must be reference or public." >&2
+    echo "UNIVTAC_ENVIRONMENT must be reference, tacittouch, or public." >&2
     exit 2
     ;;
 esac

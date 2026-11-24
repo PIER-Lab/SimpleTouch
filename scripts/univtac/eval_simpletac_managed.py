@@ -34,7 +34,12 @@ from scripts.univtac.managed_eval_results import (
     validate_prefix,
     write_json,
 )
-from scripts.univtac.reference_runtime import reference_root, verify_reference
+from scripts.univtac.reference_runtime import (
+    REFERENCE_PROFILES,
+    reference_file,
+    reference_root,
+    verify_reference,
+)
 
 LOGGER = logging.getLogger(__name__)
 REPO = Path(__file__).resolve().parents[2]
@@ -146,10 +151,11 @@ def resolve_plan(args: argparse.Namespace) -> tuple[Path, dict, int, list[int]]:
     environment = os.environ.get(
         "UNIVTAC_ENVIRONMENT", saved.get("environment_profile", "reference")
     )
-    if environment not in {"reference", "public"}:
-        raise ValueError("UNIVTAC_ENVIRONMENT must be reference or public")
-    evaluation_source = reference_root() if environment == "reference" else UNIVTAC
-    if environment == "reference":
+    if environment not in (*REFERENCE_PROFILES, "public"):
+        raise ValueError("UNIVTAC_ENVIRONMENT must be reference, tacittouch, or public")
+    use_reference = environment in REFERENCE_PROFILES
+    evaluation_source = reference_root() if use_reference else UNIVTAC
+    if use_reference:
         verify_reference(evaluation_source)
     values = {
         "checkpoint": str(checkpoint),
@@ -179,7 +185,7 @@ def resolve_plan(args: argparse.Namespace) -> tuple[Path, dict, int, list[int]]:
         raise ValueError("Invalid horizon/thread setting")
     values["checkpoint_config_sha256"] = small_hash(checkpoint / "config.yaml")
     values["completion_marker_sha256"] = small_hash(checkpoint / "_SUCCESS")
-    if environment == "reference":
+    if use_reference:
         values["environment_profile"] = environment
         values["reference_manifest_sha256"] = small_hash(evaluation_source / "manifest.json")
     config = Path(values["task_config"])
@@ -200,6 +206,11 @@ def resolve_plan(args: argparse.Namespace) -> tuple[Path, dict, int, list[int]]:
             REPO / "examples/UniVTAC/plugin/policy/SimpleTac/deploy_policy.py",
         ]
     }
+    if environment == "tacittouch" and task == "insert_tube":
+        task_file = f"envs/{task}.py"
+        values["evaluation_code_sha256"][str(evaluation_source / task_file)] = (
+            hashlib.sha256(reference_file(evaluation_source, task_file, environment)).hexdigest()
+        )
     values["livestream"] = os.environ.get(
         "UNIVTAC_LIVESTREAM", saved.get("livestream", "2")
     )
@@ -413,7 +424,11 @@ def execute(args: argparse.Namespace) -> dict:
             raise RuntimeError(f"Required executable missing: {dependency}")
     from scripts.univtac.eval_policy_managed import adapt_source
 
-    evaluation_source = reference_root() if contract.get("environment_profile") == "reference" else UNIVTAC
+    evaluation_source = (
+        reference_root()
+        if contract.get("environment_profile") in REFERENCE_PROFILES
+        else UNIVTAC
+    )
     adapt_source((evaluation_source / "scripts/eval_policy.py").read_text())
     active_process_check(root, contract["checkpoint"])
     with contextlib.ExitStack() as stack:

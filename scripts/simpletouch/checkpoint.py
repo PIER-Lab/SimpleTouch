@@ -472,6 +472,10 @@ def build_training_fingerprint(
     if training_backend not in {"eager", "sdpa"}:
         raise ValueError(f"Invalid training attention backend: {training_backend!r}")
     fingerprint["model"]["openpi"]["training_attention_backend"] = training_backend
+    if _select(config, "actor.model.tacittouch", None) is not None:
+        from scripts.tacittouch.settings import training_provenance
+
+        fingerprint["tacittouch"] = training_provenance(config)
     return fingerprint
 
 

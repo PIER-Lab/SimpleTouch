@@ -33,6 +33,13 @@ mp.set_start_method("spawn", force=True)
 def main(cfg) -> None:
     cfg = validate_cfg(cfg)
     validate_training_future_cache_config(cfg)
+    worker_type = FSDPVlaSftWorker
+    if cfg.actor.model.get("tacittouch") is not None:
+        from scripts.tacittouch.settings import validate_training_config
+        from scripts.tacittouch.training import TacitTouchSftWorker
+
+        validate_training_config(cfg)
+        worker_type = TacitTouchSftWorker
     logging.info(json.dumps(OmegaConf.to_container(cfg, resolve=True), indent=2))
 
     cluster = Cluster(cluster_cfg=cfg.cluster)
@@ -42,7 +49,7 @@ def main(cfg) -> None:
     actor_placement = component_placement.get_strategy("actor")
 
     if cfg.actor.training_backend == "fsdp" or cfg.actor.training_backend == "fsdp2":
-        actor_group = FSDPVlaSftWorker.create_group(cfg).launch(
+        actor_group = worker_type.create_group(cfg).launch(
             cluster, name=cfg.actor.group_name, placement_strategy=actor_placement
         )
 

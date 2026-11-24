@@ -1,0 +1,26 @@
+# @package _global_
+
+runner:
+  logger:
+    project_name: TacitTouch
+    experiment_name: tacittouch_${data.task}
+
+data:
+  tactile_world_cache_path: null
+  tactile_expert_future_cache_path: null
+  # Train on the same repeat-last padded H50 demonstrations as the reference run.
+  action_loss_masking: include_repeat_last_padding
+
+actor:
+  gradient_diagnostics_interval: 0
+  model:
+    openpi:
+      tactile_encoder_path: null
+      tactile_expert_enabled: false
+      tactile_expert_future_loss_weight: 0.0
+      tactile_expert_tail_supervision_mode: null
+    tacittouch:
+      teacher_checkpoint: ${oc.env:TACITTOUCH_TEACHER_CHECKPOINT,null}
+      tactile_encoder_path: ${oc.env:SIMPLETOUCH_T3_PATH,null}
+      feature_loss_weight: 0.01
+      demonstration_loss_weight: 1.0

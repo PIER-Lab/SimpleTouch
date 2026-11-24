@@ -16,16 +16,25 @@
     <sup>†</sup>Corresponding author
   </p>
   <p>
-    <a href="https://simpletouch-robot.github.io/"><img src="https://img.shields.io/badge/Project-Page-3B82F6?style=for-the-badge&amp;logo=googlechrome&amp;logoColor=white" alt="Project Page"></a>
-    <a href="https://arxiv.org/pdf/2610.02784"><img src="https://img.shields.io/badge/Paper-PDF-7C3AED?style=for-the-badge&amp;logo=adobeacrobatreader&amp;logoColor=white" alt="Paper PDF"></a>
-    <a href="https://arxiv.org/abs/2610.02784"><img src="https://img.shields.io/badge/arXiv-2610.02784-B31B1B?style=for-the-badge&amp;logo=arxiv&amp;logoColor=white" alt="arXiv 2610.02784"></a>
-    <a href="https://huggingface.co/cyang203912/SimpleTouch"><img src="https://img.shields.io/badge/Hugging%20Face-Checkpoints-FF9D00?style=for-the-badge&amp;logo=huggingface&amp;logoColor=white" alt="Hugging Face checkpoints"></a>
+    <a href="https://simpletouch-robot.github.io/"><img src="https://img.shields.io/badge/Project%20Page-ST-2563EB?style=flat&amp;logo=githubpages&amp;logoColor=white" alt="SimpleTouch project page"></a>
+    <a href="https://pier-lab.github.io/tacittouch/"><img src="https://img.shields.io/badge/Project%20Page-Tacit-2563EB?style=flat&amp;logo=githubpages&amp;logoColor=white" alt="TacitTouch project page"></a>
+    <a href="https://arxiv.org/pdf/2610.02784"><img src="https://img.shields.io/badge/PDF-ST-6D28D9?style=flat&amp;logo=googledocs&amp;logoColor=white" alt="SimpleTouch paper PDF"></a>
+    <a href="https://arxiv.org/pdf/2611.28697"><img src="https://img.shields.io/badge/PDF-Tacit-6D28D9?style=flat&amp;logo=googledocs&amp;logoColor=white" alt="TacitTouch paper PDF"></a>
+    <a href="https://arxiv.org/abs/2610.02784"><img src="https://img.shields.io/badge/arXiv-ST-B31B1B?style=flat&amp;logo=arxiv&amp;logoColor=white" alt="SimpleTouch arXiv 2610.02784"></a>
+    <a href="https://arxiv.org/abs/2611.28697"><img src="https://img.shields.io/badge/arXiv-Tacit-B31B1B?style=flat&amp;logo=arxiv&amp;logoColor=white" alt="TacitTouch arXiv 2611.28697"></a>
+    <a href="https://huggingface.co/cyang203912/SimpleTouch"><img src="https://img.shields.io/badge/Checkpoints-B45309?style=flat&amp;logo=huggingface&amp;logoColor=white" alt="Shared SimpleTouch and TacitTouch checkpoints"></a>
   </p>
 </div>
 
 ![SimpleTouch teaser](assets/teaser.webp)
 
 SimpleTouch adds a tactile expert to π0.5 and learns contact-rich manipulation from task demonstrations, without tactile policy pretraining.
+
+## News
+
+- **2026-11-24** Added [TacitTouch](https://pier-lab.github.io/tacittouch/) with
+  UniVTAC simulation training, evaluation, and pretrained student checkpoints.
+  See [Distillation](#distillation).
 
 ## ⚙️ Environment Setup
 
@@ -150,6 +159,62 @@ SIMPLETOUCH_NUM_GPUS=8 bash scripts/simpletouch/train_univtac.sh
 
 For another task, change `SIMPLETOUCH_TASK` and the corresponding paths. Training requires the generated `<cache-root>/<task>/manifest.json`; it does not build the cache automatically. Set `SIMPLETOUCH_OUTPUT_ROOT` to change the default `outputs/` directory.
 
+## Distillation
+
+TacitTouch distills a task-trained SimpleTouch teacher into a vision-only
+student. The [released UniVTAC checkpoints](https://huggingface.co/cyang203912/SimpleTouch/tree/main/tacittouch)
+cover Lift Bottle, Lift Can, Put Bottle, and Insert Tube.
+
+### Train a TacitTouch student
+
+Activate the policy environment and set `SIMPLETOUCH_T3_PATH` and
+`SIMPLETOUCH_TOKENIZER_PATH` as in Environment Setup. Use a converted π0.5 base
+model from the [UniVTAC training example](#univtac-example).
+Place the [UniVTAC demonstrations](https://github.com/univtac/UniVTAC#data-collection)
+under `<data-root>/<task>/clean/` as `0.hdf5` through `49.hdf5`.
+
+From the repository root, download the task-trained teacher and pass its
+normalization statistics to the [distillation launcher](scripts/tacittouch/train_univtac.sh).
+
+```bash
+export TACITTOUCH_TASK=lift_bottle
+export SIMPLETOUCH_DATA_ROOT=/path/to/UniVTAC/dataset
+export SIMPLETOUCH_BASE_MODEL_PATH="$PWD/assets/pi05_base_pytorch"
+
+python scripts/simpletouch/download_checkpoint.py \
+  --repo-id cyang203912/SimpleTouch \
+  --task "$TACITTOUCH_TASK" --output-root "$PWD/checkpoints"
+
+export TACITTOUCH_TEACHER_CHECKPOINT="$PWD/checkpoints/${TACITTOUCH_TASK}/global_step_20000"
+export SIMPLETOUCH_NORM_STATS_PATH="$TACITTOUCH_TEACHER_CHECKPOINT/norm_stats.json"
+
+SIMPLETOUCH_NUM_GPUS=8 bash scripts/tacittouch/train_univtac.sh
+```
+
+The launcher freezes the teacher and trains the vision-only student for 20,000
+updates with a global batch of 64. The objective uses weights 1, 0.01, and 1 for
+teacher velocity matching, action-feature distillation, and demonstrated-action
+supervision, respectively. The final checkpoint is saved at
+`outputs/tacittouch_<task>/checkpoints/global_step_20000` by default. See the
+[TacitTouch recipe](scripts/tacittouch/README.md) for task settings and ablations.
+
+### Evaluate a TacitTouch student
+
+With the [UniVTAC evaluation environment](#-evaluation) set up and the policy
+environment active, download and evaluate a student checkpoint.
+
+```bash
+export TACITTOUCH_TASK=lift_bottle
+hf download cyang203912/SimpleTouch \
+  --include "tacittouch/${TACITTOUCH_TASK}/global_step_20000/**" \
+  --local-dir ./checkpoints
+export TACITTOUCH_CHECKPOINT="$PWD/checkpoints/tacittouch/${TACITTOUCH_TASK}/global_step_20000"
+GPU_ID=0 bash scripts/tacittouch/evaluate_univtac.sh
+```
+
+For a locally trained student, set `TACITTOUCH_CHECKPOINT` to the output
+checkpoint directory and run the same evaluation script.
+
 ## 🛠️ Piper Gripper Hardware
 
 See the [Piper gripper hardware setup for GelSight Mini](hardware/piper-gelsight-mini/docs/README.md).
@@ -164,7 +229,7 @@ We thank the authors and maintainers of [RLinf](https://github.com/RLinf/RLinf),
 
 ## 📝 Citation
 
-Please cite SimpleTouch as follows.
+### SimpleTouch
 
 ```bibtex
 @misc{yang2026simpletouchvisionlanguageactionmodelsmaster,
@@ -175,5 +240,20 @@ Please cite SimpleTouch as follows.
   archivePrefix={arXiv},
   primaryClass={cs.RO},
   url={https://arxiv.org/abs/2610.02784},
+}
+```
+
+### TacitTouch
+
+```bibtex
+@misc{yang2026distillingtouchvisiononlypolicies,
+  title={Distilling Touch into Vision-Only Policies for Contact-Rich Manipulation},
+  author={Chen Yang and Linhao Wang and Linzhe Shi and Guohui Zhang and
+    Changjie Wu and Hang Zhang and Haoyu Li and Mu Xu and Jiansheng Fan and Chen Wang},
+  year={2026},
+  eprint={2611.28697},
+  archivePrefix={arXiv},
+  primaryClass={cs.RO},
+  url={https://arxiv.org/abs/2611.28697},
 }
 ```

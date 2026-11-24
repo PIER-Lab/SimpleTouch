@@ -32,11 +32,35 @@ def verify_reference(reference):
     return manifest
 
 
-def prepare_runtime(upstream, target, kit_root=None, reference=None):
+REFERENCE_PROFILES = ("reference", "tacittouch")
+
+
+def reference_file(reference, name, profile="reference"):
+    """Read the pinned source for the requested evaluation profile."""
+    source = (Path(reference) / name).read_bytes()
+    if profile == "tacittouch" and name == "envs/insert_tube.py":
+        original = b"np.all(prism_pose.p[:2] < np.array([0.005, 0.005])) and prism_pose.p[2] < -z_threshold"
+        if source.count(original) != 1:
+            raise RuntimeError("Unsupported Insert Tube reference success check")
+        source = source.replace(
+            original, b"np.all(np.abs(prism_pose.p[:2]) < np.array([0.005, 0.005])) and prism_pose.p[2] < -z_threshold"
+        )
+    return source
+
+
+def prepare_runtime(upstream, target, kit_root=None, reference=None, profile="reference"):
     """Copy reviewed Python/config files, without editing the supplied checkout."""
     upstream, target = Path(upstream).resolve(), Path(target).absolute()
     reference = Path(reference) if reference else reference_root()
     manifest = verify_reference(reference)
+    if profile not in REFERENCE_PROFILES:
+        raise ValueError(f"Unknown reference profile: {profile!r}")
+    expected_files = dict(manifest["files"])
+    if profile == "tacittouch":
+        task_file = "envs/insert_tube.py"
+        expected_files[task_file] = hashlib.sha256(
+            reference_file(reference, task_file, profile)
+        ).hexdigest()
     if target == upstream or target == reference.resolve():
         raise ValueError("Runtime must be separate from its source")
     for name, expected in manifest["checked_assets"].items():
@@ -66,11 +90,11 @@ def prepare_runtime(upstream, target, kit_root=None, reference=None):
             for name in manifest["files"]:
                 dest = target / name
                 dest.parent.mkdir(parents=True, exist_ok=True)
-                shutil.copyfile(reference / name, dest)
+                dest.write_bytes(reference_file(reference, name, profile))
             marker.write_text(json.dumps({"initializing": True}) + "\n")
         # Always verify mutable runtime copies, rather than silently overwriting
         # an unexpected change in an existing installation.
-        for name, expected in manifest["files"].items():
+        for name, expected in expected_files.items():
             if name == "scripts/eval_policy.py":
                 continue
             if digest(target / name) != expected:
@@ -95,6 +119,9 @@ def prepare_runtime(upstream, target, kit_root=None, reference=None):
                   "reference_eval_sha256": manifest["files"]["scripts/eval_policy.py"],
                   "private_eval_sha256": digest(evaluator),
                   "startup_changes": ["per-GPU Kit portable root"] if kit_root else []}
+        if profile == "tacittouch":
+            record["profile"] = profile
+            record["insert_tube_source_sha256"] = expected_files["envs/insert_tube.py"]
         marker.write_text(json.dumps(record, indent=2) + "\n")
     return target
 
@@ -104,9 +131,10 @@ def main():
     parser.add_argument("--upstream", required=True)
     parser.add_argument("--target", required=True)
     parser.add_argument("--kit-root")
+    parser.add_argument("--profile", choices=REFERENCE_PROFILES, default="reference")
     args = parser.parse_args()
     os.umask(0o002)
-    print(prepare_runtime(args.upstream, args.target, args.kit_root))
+    print(prepare_runtime(args.upstream, args.target, args.kit_root, profile=args.profile))
 
 
 if __name__ == "__main__":
