@@ -58,7 +58,7 @@ loss ablations, set `actor.model.tacittouch.feature_loss_weight=0` or
 
 Set up the [UniVTAC environment](../../README.md#-evaluation) and download a
 student checkpoint from the [shared model repository](https://huggingface.co/cyang203912/SimpleTouch/tree/main/tacittouch)
-using the [download example](../../README.md#distillation). For a checkpoint
+using the [download example](../../README.md#-distillation). For a checkpoint
 downloaded to `./checkpoints`, run the following commands.
 
 ```bash
