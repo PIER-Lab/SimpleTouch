@@ -159,7 +159,7 @@ SIMPLETOUCH_NUM_GPUS=8 bash scripts/simpletouch/train_univtac.sh
 
 For another task, change `SIMPLETOUCH_TASK` and the corresponding paths. Training requires the generated `<cache-root>/<task>/manifest.json`; it does not build the cache automatically. Set `SIMPLETOUCH_OUTPUT_ROOT` to change the default `outputs/` directory.
 
-## 🎓 Distillation
+## ⚗️ Distillation
 
 TacitTouch distills a task-trained SimpleTouch teacher into a vision-only
 student. The [released UniVTAC checkpoints](https://huggingface.co/cyang203912/SimpleTouch/tree/main/tacittouch)
